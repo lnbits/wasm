@@ -5,7 +5,7 @@ window.app = Vue.createApp({
     return {
       count: null,
       loading: false,
-      incrementAmount: 1,
+      incrementAmount: 10,
       incrementInvoice: null,
       incrementWs: null,
       invoiceForm: {
@@ -26,6 +26,19 @@ window.app = Vue.createApp({
     }
   },
   methods: {
+    async proxyRequest(method, path, key, body) {
+      const {data} = await LNbits.api.request(
+        'POST',
+        '/wasmexample/api/v1/proxy',
+        key,
+        {
+          method,
+          path,
+          body
+        }
+      )
+      return data
+    },
     async loadCount() {
       this.loading = true
       try {
@@ -59,13 +72,20 @@ window.app = Vue.createApp({
     async createIncrementInvoice() {
       this.loading = true
       try {
-        const {data} = await LNbits.api.request(
+        await LNbits.api.request(
           'POST',
-          '/wasmexample/api/v1/invoices',
+          '/wasmexample/api/v1/kv/increment_amount',
+          this.g.user.wallets[0].inkey,
+          {value: String(this.incrementAmount)}
+        )
+        const data = await this.proxyRequest(
+          'POST',
+          '/api/v1/payments',
           this.g.user.wallets[0].inkey,
           {
-            wallet_id: this.g.user.wallets[0].id,
+            out: false,
             amount: this.incrementAmount,
+            unit: 'sat',
             memo: 'WasmExample increment'
           }
         )
@@ -93,7 +113,7 @@ window.app = Vue.createApp({
         if (payment.pending === false) {
           ws.close()
           this.incrementWs = null
-          await this.increment()
+          await this.loadCount()
         }
       })
       ws.addEventListener('error', () => {
@@ -104,11 +124,16 @@ window.app = Vue.createApp({
     },
     async createInvoice() {
       try {
-        const {data} = await LNbits.api.request(
+        const data = await this.proxyRequest(
           'POST',
-          '/wasmexample/api/v1/invoices',
+          '/api/v1/payments',
           this.g.user.wallets[0].inkey,
-          this.invoiceForm
+          {
+            out: false,
+            amount: this.invoiceForm.amount,
+            unit: 'sat',
+            memo: this.invoiceForm.memo
+          }
         )
         this.lastInvoice = data
       } catch (err) {
@@ -117,11 +142,14 @@ window.app = Vue.createApp({
     },
     async payInvoice() {
       try {
-        await LNbits.api.request(
+        await this.proxyRequest(
           'POST',
-          '/wasmexample/api/v1/invoices/pay',
-          this.g.user.wallets[0].inkey,
-          this.payForm
+          '/api/v1/payments',
+          this.g.user.wallets[0].adminkey,
+          {
+            out: true,
+            bolt11: this.payForm.payment_request
+          }
         )
         this.payForm.payment_request = ''
         Quasar.Notify.create({

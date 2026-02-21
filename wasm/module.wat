@@ -5,6 +5,7 @@
   (memory (export "memory") 1)
   (global $heap (mut i32) (i32.const 1024))
   (data (i32.const 0) "counter")
+  (data (i32.const 16) "increment_amount")
 
   (func $alloc (param $size i32) (result i32)
     (local $old i32)
@@ -177,5 +178,33 @@
     drop
     local.get $val)
 
+  (func $get_increment_amount (result i32)
+    (local $buf i32)
+    (local $len i32)
+    (local $val i32)
+    i32.const 64
+    local.set $buf
+    i32.const 32
+    local.set $len
+    i32.const 16
+    i32.const 16
+    local.get $buf
+    local.get $len
+    call $db_get
+    local.set $len
+    local.get $len
+    i32.eqz
+    if
+      i32.const 10
+      local.set $val
+    else
+      local.get $buf
+      local.get $len
+      call $atoi
+      local.set $val
+    end
+    local.get $val)
+
   (export "increment_counter" (func $increment_counter))
+  (export "get_increment_amount" (func $get_increment_amount))
 )
