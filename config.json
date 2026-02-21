@@ -16,6 +16,19 @@
   "description_md": "https://raw.githubusercontent.com/lnbits/wasmexample/main/description.md",
   "terms_and_conditions_md": "https://raw.githubusercontent.com/lnbits/wasmexample/main/toc.md",
   "public_kv_keys": ["counter"],
+  "kv_schema": {
+    "counter": {
+      "type": "int",
+      "default": 0
+    },
+    "increment_amount": {
+      "type": "int",
+      "default": 10
+    },
+    "last_payment": {
+      "type": "json"
+    }
+  },
   "permissions": [
     {
       "id": "ext.db.read_write",
@@ -28,9 +41,9 @@
       "description": "Call POST /api/v1/payments to create or pay invoices."
     },
     {
-      "id": "lnbits.payments.subscribe",
-      "label": "Subscribe to payments",
-      "description": "Listen for incoming payments on your wallets."
+      "id": "ext.payments.watch",
+      "label": "Watch invoice payments",
+      "description": "Register a backend watcher for a payment hash."
     }
   ],
   "license": "MIT"

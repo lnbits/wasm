@@ -1,0 +1,11 @@
+{
+  "name": "wasmexample-as",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "asbuild": "asc assembly/index.ts -b build/module.wasm -t build/module.wat --optimize"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.27.31"
+  }
+}

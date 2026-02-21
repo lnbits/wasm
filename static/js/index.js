@@ -8,6 +8,7 @@ window.app = Vue.createApp({
       incrementAmount: 10,
       incrementInvoice: null,
       incrementWs: null,
+      showIncrementDialog: false,
       invoiceForm: {
         wallet_id: null,
         amount: 1,
@@ -86,10 +87,23 @@ window.app = Vue.createApp({
             out: false,
             amount: this.incrementAmount,
             unit: 'sat',
-            memo: 'WasmExample increment'
+            memo: 'WasmExample increment',
+            extra: {tag: 'wasmexample:increment'}
           }
         )
         this.incrementInvoice = data
+        await LNbits.api.request(
+          'POST',
+          '/wasmexample/api/v1/watch',
+          this.g.user.wallets[0].inkey,
+          {
+            payment_hash: data.payment_hash,
+            handler: 'increment_counter',
+            tag: 'wasmexample:increment',
+            store_key: 'last_payment'
+          }
+        )
+        this.showIncrementDialog = true
         this.listenForIncrementPayment(data.payment_hash)
       } catch (err) {
         LNbits.utils.notifyApiError(err)
@@ -114,6 +128,7 @@ window.app = Vue.createApp({
           ws.close()
           this.incrementWs = null
           await this.loadCount()
+          this.showIncrementDialog = false
         }
       })
       ws.addEventListener('error', () => {

@@ -43,26 +43,6 @@
             :disable="loading"
           ></q-btn>
         </div>
-        <div v-if="incrementInvoice" class="q-mt-lg">
-          <div class="text-caption q-mb-sm">Pay invoice to increment</div>
-          <lnbits-qrcode
-            :value="'lightning:' + incrementInvoice.payment_request.toUpperCase()"
-            :href="'lightning:' + incrementInvoice.payment_request"
-          ></lnbits-qrcode>
-          <q-input
-            dense
-            readonly
-            class="q-mt-sm"
-            :model-value="incrementInvoice.payment_request"
-          ></q-input>
-          <q-btn
-            outline
-            color="grey"
-            class="q-mt-sm"
-            label="Copy invoice"
-            @click="utils.copyText(incrementInvoice.payment_request)"
-          ></q-btn>
-        </div>
       </q-card-section>
       <q-separator></q-separator>
       <q-card-section>
@@ -159,4 +139,41 @@
     </q-card>
   </div>
 </div>
+<q-dialog v-model="showIncrementDialog" position="top">
+  <q-card class="q-pa-lg lnbits__dialog-card">
+    <q-card-section>
+      <div v-if="incrementInvoice">
+        <lnbits-qrcode
+          :value="'lightning:' + incrementInvoice.payment_request.toUpperCase()"
+          :href="'lightning:' + incrementInvoice.payment_request"
+        ></lnbits-qrcode>
+        <div class="text-caption q-mt-sm">Pay invoice to increment</div>
+        <q-input
+          dense
+          readonly
+          class="q-mt-sm"
+          :model-value="incrementInvoice.payment_request"
+        ></q-input>
+      </div>
+      <div v-else>
+        <q-spinner-bars color="primary" size="2.55em"></q-spinner-bars>
+      </div>
+    </q-card-section>
+    <q-card-actions align="right">
+      <q-btn
+        outline
+        color="grey"
+        label="Copy invoice"
+        :disable="!incrementInvoice"
+        @click="utils.copyText(incrementInvoice.payment_request)"
+      ></q-btn>
+      <q-btn
+        flat
+        color="grey"
+        label="Close"
+        @click="showIncrementDialog = false"
+      ></q-btn>
+    </q-card-actions>
+  </q-card>
+</q-dialog>
 {% endblock %}
