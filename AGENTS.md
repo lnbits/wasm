@@ -9,12 +9,12 @@ No Python code from the extension is executed by LNbits.
 
 ## What It Can Do (When Permissions Are Granted)
 - Read/write the extension KV store (`ext.db.read_write`).
-- Call internal LNbits endpoints via the proxy (`api.METHOD:/path`).
+- Call internal LNbits endpoints via the proxy (`api.METHOD:/path`). Check /openapi.json or /docs for available endpoints.
 - Register backend payment watchers (`ext.payments.watch`).
 
 ## What It Cannot Do
 - Access the filesystem.
-- Access environment variables or LNbits settings.
+- Access environment variables or LNbits settings (outside of the API for fetching settings).
 - Make outbound network calls.
 - Execute Python or shell commands.
 

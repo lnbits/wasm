@@ -13,7 +13,7 @@ explicit permissions you declare in `config.json`.
 
 ## What It Cannot Do
 - Access the filesystem.
-- Access environment variables or LNbits settings.
+- Access environment variables or LNbits settings (outside of the API for fetching settings).
 - Make outbound network calls.
 - Execute Python or shell commands.
 
@@ -21,7 +21,7 @@ explicit permissions you declare in `config.json`.
 
 - `ext.db.read_write` controls access to the extension KV store.
 - `api.METHOD:/path` lets the extension call internal LNbits endpoints through
-  the proxy (exact path match).
+  the proxy (exact path match). Check /openapi.json or /docs for available endpoints.
 - `ext.payments.watch` lets the extension register backend payment watchers.
 
 Permissions are shown at enable time and must be explicitly approved.
