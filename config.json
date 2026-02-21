@@ -1,0 +1,42 @@
+{
+  "name": "WasmExample",
+  "id": "wasmexample",
+  "short_description": "WASM-only example with permissions and live counter",
+  "tile": "/wasmexample/static/image/wasmexample.svg",
+  "version": "0.0.1",
+  "min_lnbits_version": "1.1.0",
+  "extension_type": "wasm",
+  "contributors": [
+    {
+      "name": "LNbits community",
+      "uri": "https://t.me/lnbits",
+      "role": "Community"
+    }
+  ],
+  "description_md": "https://raw.githubusercontent.com/lnbits/wasmexample/main/description.md",
+  "terms_and_conditions_md": "https://raw.githubusercontent.com/lnbits/wasmexample/main/toc.md",
+  "public_kv_keys": ["counter"],
+  "permissions": [
+    {
+      "id": "ext.db.read_write",
+      "label": "Access extension database",
+      "description": "Read and write data in the wasmexample extension database."
+    },
+    {
+      "id": "lnbits.invoice.create",
+      "label": "Create invoices",
+      "description": "Generate invoices from a selected wallet."
+    },
+    {
+      "id": "lnbits.invoice.pay",
+      "label": "Pay invoices",
+      "description": "Settle invoices from a selected wallet."
+    },
+    {
+      "id": "lnbits.payments.subscribe",
+      "label": "Subscribe to payments",
+      "description": "Listen for incoming payments on your wallets."
+    }
+  ],
+  "license": "MIT"
+}

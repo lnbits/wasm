@@ -1,0 +1,58 @@
+{% extends "public.html" %} {% block page %}
+<div class="row justify-center">
+  <div class="col-12 col-sm-8 col-md-6">
+    <q-card>
+      <q-card-section>
+        <div class="text-h5">WasmExample Counter</div>
+        <div class="text-caption text-grey">Live updates via websocket</div>
+      </q-card-section>
+      <q-separator></q-separator>
+      <q-card-section class="text-center">
+        <div class="text-h2" v-text="count"></div>
+      </q-card-section>
+    </q-card>
+  </div>
+</div>
+
+<script>
+  const key = {{ key | tojson | safe }}
+  window.app = Vue.createApp({
+    data() {
+      return {
+        count: 0
+      }
+    },
+    methods: {
+      async loadCount() {
+        try {
+          const res = await fetch(`/wasmexample/api/v1/public/kv/${key}`)
+          if (!res.ok) return
+          const data = await res.json()
+          this.count = data.value !== null ? Number(data.value) : 0
+        } catch (e) {
+          console.warn(e)
+        }
+      },
+      connectWs() {
+        try {
+          const url = new URL(window.location)
+          url.protocol = url.protocol === 'https:' ? 'wss' : 'ws'
+          url.pathname = `/api/v1/ws/wasmexample:${key}`
+          const ws = new WebSocket(url)
+          ws.onmessage = ({data}) => {
+            const num = Number(data)
+            if (!Number.isNaN(num)) this.count = num
+          }
+          ws.onerror = err => console.warn('WS error', err)
+        } catch (err) {
+          console.warn(err)
+        }
+      }
+    },
+    mounted() {
+      this.loadCount()
+      this.connectWs()
+    }
+  })
+</script>
+{% endblock %}
