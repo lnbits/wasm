@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block page %}
+<div class="row q-col-gutter-md">
+  <div class="col-12 col-md-6">
+    <q-card>
+      <q-card-section>
+        <div class="text-h5">WASM Host Settings</div>
+        <div class="text-caption text-grey">Applies to all WASM child extensions.</div>
+      </q-card-section>
+      <q-card-section>
+        <q-input
+          v-model.number="form.timeout_seconds"
+          label="Timeout (seconds)"
+          type="number"
+          min="0.1"
+          step="0.1"
+        ></q-input>
+        <q-input
+          v-model.number="form.max_module_bytes"
+          label="Max module bytes"
+          type="number"
+          min="0"
+        ></q-input>
+        <q-input
+          v-model.number="form.max_db_ops_per_min"
+          label="Max DB ops per minute"
+          type="number"
+          min="0"
+        ></q-input>
+      </q-card-section>
+      <q-card-actions align="right">
+        <q-btn color="primary" label="Save" @click="save"></q-btn>
+      </q-card-actions>
+    </q-card>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.app = Vue.createApp({
+    el: '#vue',
+    mixins: [windowMixin],
+    data() {
+      return {
+        form: {
+          timeout_seconds: 3.0,
+          max_module_bytes: 1000000,
+          max_db_ops_per_min: 120
+        }
+      }
+    },
+    methods: {
+      async load() {
+        try {
+          const {data} = await LNbits.api.request('GET', '/wasm/api/v1/settings')
+          this.form = {...this.form, ...data}
+        } catch (err) {
+          LNbits.utils.notifyApiError(err)
+        }
+      },
+      async save() {
+        try {
+          await LNbits.api.request('PUT', '/wasm/api/v1/settings', null, this.form)
+          Quasar.Notify.create({type: 'positive', message: 'Settings saved'})
+        } catch (err) {
+          LNbits.utils.notifyApiError(err)
+        }
+      }
+    },
+    created() {
+      this.load()
+    }
+  })
+</script>
+{% endblock %}

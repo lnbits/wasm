@@ -1,49 +1,15 @@
 {
-  "name": "WasmExample",
-  "id": "wasmexample",
-  "short_description": "WASM-only example with permissions and live counter",
-  "tile": "/wasmexample/static/image/wasmexample.svg",
+  "name": "WASM!",
+  "id": "wasm",
+  "short_description": "WASM host and sandbox for child extensions",
+  "tile": "/wasm/static/image/wasm.svg",
   "version": "0.0.1",
   "min_lnbits_version": "1.1.0",
-  "extension_type": "wasm",
   "contributors": [
     {
       "name": "LNbits community",
       "uri": "https://t.me/lnbits",
       "role": "Community"
-    }
-  ],
-  "description_md": "https://raw.githubusercontent.com/lnbits/wasmexample/main/description.md",
-  "terms_and_conditions_md": "https://raw.githubusercontent.com/lnbits/wasmexample/main/toc.md",
-  "public_kv_keys": ["counter"],
-  "kv_schema": {
-    "counter": {
-      "type": "int",
-      "default": 0
-    },
-    "increment_amount": {
-      "type": "int",
-      "default": 10
-    },
-    "last_payment": {
-      "type": "json"
-    }
-  },
-  "permissions": [
-    {
-      "id": "ext.db.read_write",
-      "label": "Access extension database",
-      "description": "Read and write data in the wasmexample extension database."
-    },
-    {
-      "id": "api.POST:/api/v1/payments",
-      "label": "Create or pay invoices",
-      "description": "Call POST /api/v1/payments to create or pay invoices."
-    },
-    {
-      "id": "ext.payments.watch",
-      "label": "Watch invoice payments",
-      "description": "Register a backend watcher for a payment hash."
     }
   ],
   "license": "MIT"
