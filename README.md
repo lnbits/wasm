@@ -13,7 +13,7 @@
 <img src="./static/image/wasm.png" alt="WASM Host" width="220">
 
 **A safer, permissioned runtime for WASM extensions.**
-Run vibe-coded or unvetted extensions without bloating core LNbits.
+Needed to run wasm extensions, a safe why to run vibe-coded and unvetted extensions without comprimising your system.
 
 ---
 
