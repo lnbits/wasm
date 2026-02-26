@@ -2,7 +2,8 @@
   "name": "WASM!",
   "id": "wasm",
   "short_description": "WASM host and sandbox for child extensions",
-  "tile": "/wasm/static/image/wasm.svg",
+  "description": "Run LNbits WASM extensions in a sandboxed runtime with a small host API.",
+  "tile": "/wasm/static/image/wasm.png",
   "version": "0.0.1",
   "min_lnbits_version": "1.1.0",
   "contributors": [
@@ -12,5 +13,7 @@
       "role": "Community"
     }
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "tags": ["Developer", "WASM"],
+  "hidden": false
 }

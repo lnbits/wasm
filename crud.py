@@ -35,7 +35,7 @@ async def get_settings() -> WasmSettings:
 
 async def set_settings(settings: WasmSettings) -> None:
     await _ensure_settings_table()
-    value = settings.model_dump()
+    value = settings.dict()
     payload = json.dumps(value)
     existing = await db.fetchone(
         "SELECT id FROM wasm.settings WHERE id = :id",

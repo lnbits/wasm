@@ -19,7 +19,7 @@ from lnbits.settings import settings
 
 from .crud import get_settings, set_settings
 from .models import WasmSettings
-from .services import apply_wasm_settings, load_wasm_settings
+from .services import load_wasm_settings
 from .wasm_host import WASM_HOST_MANIFEST
 
 wasm_api_router = APIRouter()
@@ -29,7 +29,7 @@ def _load_extension_config(ext_id: str) -> dict:
     conf_path = Path(settings.lnbits_extensions_path, "extensions", ext_id, "config.json")
     if not conf_path.is_file():
         raise HTTPException(HTTPStatus.NOT_FOUND, f"Extension '{ext_id}' not found.")
-    with open(conf_path, "r+") as json_file:
+    with open(conf_path, "r") as json_file:
         return json.load(json_file)
 
 
@@ -113,15 +113,14 @@ def _ensure_api_permissions_available(request: Request, permissions: list[str]) 
 @wasm_api_router.get("/api/v1/settings", dependencies=[Depends(check_admin)])
 async def api_get_settings():
     settings_obj = await get_settings()
-    return settings_obj.model_dump()
+    return settings_obj.dict()
 
 
 @wasm_api_router.put("/api/v1/settings", dependencies=[Depends(check_admin)])
 async def api_set_settings(payload: WasmSettings):
     await set_settings(payload)
     await load_wasm_settings()
-    apply_wasm_settings()
-    return payload.model_dump()
+    return payload.dict()
 
 
 @wasm_api_router.get("/api/v1/manifest")

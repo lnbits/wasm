@@ -1,11 +1,31 @@
 {% extends "base.html" %}
+{% from "macros.jinja" import window_vars with context %}
 {% block page %}
 <div class="row q-col-gutter-md">
   <div class="col-12 col-md-6">
     <q-card>
       <q-card-section>
-        <div class="text-h5">WASM Host Settings</div>
-        <div class="text-caption text-grey">Applies to all WASM child extensions.</div>
+        <div class="row items-center q-gutter-sm">
+          <q-img
+            src="{{ static_url_for('wasm/static', path='image/wasm.png') }}"
+            alt="WASM Host"
+            style="width: 28px; height: 28px"
+          />
+          <div class="text-h5">WASM Host Settings</div>
+        </div>
+        <div class="text-caption text-grey">
+          Applies to all WASM child extensions.
+        </div>
+      </q-card-section>
+      <q-card-section class="q-pt-none">
+        <q-banner rounded class="bg-grey-9 text-grey-4">
+          <div class="text-subtitle2">About</div>
+          <div class="text-caption">
+            This host lets you run vibe-coded, not-yet-vetted WASM extensions more
+            safely. Each WASM extension must request permissions before it can
+            access data or APIs.
+          </div>
+        </q-banner>
       </q-card-section>
       <q-card-section>
         <q-input
@@ -27,6 +47,12 @@
           type="number"
           min="0"
         ></q-input>
+        <q-input
+          v-model.number="form.max_kv_bytes"
+          label="Max KV bytes per extension"
+          type="number"
+          min="0"
+        ></q-input>
       </q-card-section>
       <q-card-actions align="right">
         <q-btn color="primary" label="Save" @click="save"></q-btn>
@@ -37,40 +63,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-  window.app = Vue.createApp({
-    el: '#vue',
-    mixins: [windowMixin],
-    data() {
-      return {
-        form: {
-          timeout_seconds: 3.0,
-          max_module_bytes: 1000000,
-          max_db_ops_per_min: 120
-        }
-      }
-    },
-    methods: {
-      async load() {
-        try {
-          const {data} = await LNbits.api.request('GET', '/wasm/api/v1/settings')
-          this.form = {...this.form, ...data}
-        } catch (err) {
-          LNbits.utils.notifyApiError(err)
-        }
-      },
-      async save() {
-        try {
-          await LNbits.api.request('PUT', '/wasm/api/v1/settings', null, this.form)
-          Quasar.Notify.create({type: 'positive', message: 'Settings saved'})
-        } catch (err) {
-          LNbits.utils.notifyApiError(err)
-        }
-      }
-    },
-    created() {
-      this.load()
-    }
-  })
-</script>
+{{ window_vars(user) }}
+<script src="{{ static_url_for('wasm/static', path='js/index.js') }}"></script>
 {% endblock %}

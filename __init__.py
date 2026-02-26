@@ -3,13 +3,22 @@ import asyncio
 from fastapi import APIRouter
 from loguru import logger
 
+from .crud import db
 from .views import wasm_router
 from .views_api import wasm_api_router
 from .wasm_host.extension_host import handle_wasm_tag_payment, wasm_scheduler
 
+
 wasm_ext = APIRouter(prefix="/wasm", tags=["WASM"])
 wasm_ext.include_router(wasm_router)
 wasm_ext.include_router(wasm_api_router)
+
+wasm_static_files = [
+    {
+        "path": "/wasm/static",
+        "name": "wasm_static",
+    }
+]
 
 scheduled_tasks: list[asyncio.Task] = []
 
@@ -43,7 +52,9 @@ def wasm_start():
 
 
 __all__ = [
+    "db",
     "wasm_ext",
     "wasm_start",
+    "wasm_static_files",
     "wasm_stop",
 ]

@@ -22,6 +22,7 @@ from wasmtime import (
 from lnbits.db import Database
 from lnbits.core.services import websocket_updater
 from lnbits.settings import settings
+from lnbits.extensions.wasm.services import get_cached_wasm_settings
 
 _kv_schema_cache: dict[str, dict] = {}
 _http_permissions_cache: dict[str, set[tuple[str, str]]] = {}
@@ -37,7 +38,7 @@ def _load_kv_schema(ext_id: str) -> dict:
         if not conf_path.is_file():
             _kv_schema_cache[ext_id] = {}
             return _kv_schema_cache[ext_id]
-        with open(conf_path, "r+") as json_file:
+        with open(conf_path, "r") as json_file:
             config_json = json.load(json_file)
         schema = config_json.get("kv_schema", {})
         if not isinstance(schema, dict):
@@ -66,7 +67,7 @@ def _load_http_permissions(ext_id: str) -> set[tuple[str, str]]:
         if not conf_path.is_file():
             _http_permissions_cache[ext_id] = set()
             return _http_permissions_cache[ext_id]
-        with open(conf_path, "r+") as json_file:
+        with open(conf_path, "r") as json_file:
             config_json = json.load(json_file)
         permissions = config_json.get("permissions", [])
         allowed: set[tuple[str, str]] = set()
@@ -107,6 +108,52 @@ def _coerce_schema_value(schema_entry: dict, value: str):
     if value_type == "json":
         return json.loads(value)
     return value
+
+
+def _kv_total_bytes_sync(db: Database, table: str) -> int:
+    row = _run(
+        db.fetchone(
+            f"SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value)), 0) AS total FROM {table}",  # noqa: S608
+        )
+    )
+    if not row:
+        return 0
+    try:
+        return int(row.get("total") or 0)
+    except Exception:
+        return 0
+
+
+def _ensure_kv_quota_sync(
+    db: Database,
+    ext_id: str,
+    key: str,
+    new_value: str,
+    *,
+    is_secret: bool = False,
+) -> None:
+    limit = get_cached_wasm_settings().max_kv_bytes
+    if limit <= 0:
+        return
+    table = (
+        _secret_kv_table_name(db, ext_id)
+        if is_secret
+        else _kv_table_name(db, ext_id)
+    )
+    _run(db.execute(_ensure_secret_kv_table(db, ext_id) if is_secret else _ensure_kv_table(db, ext_id)))
+    current_total = _kv_total_bytes_sync(db, table)
+    row = _run(
+        db.fetchone(
+            f"SELECT value FROM {table} WHERE key = :key",  # noqa: S608
+            {"key": key},
+        )
+    )
+    old_value = row.get("value") if row else ""
+    old_size = len(str(key)) + len(str(old_value))
+    new_size = len(str(key)) + len(str(new_value))
+    projected = current_total - old_size + new_size
+    if projected > limit:
+        raise RuntimeError("WASM KV quota exceeded")
 
 
 def _run(coro):
@@ -278,6 +325,7 @@ def _db_set(
 ) -> int:
     key = _read_bytes(caller, key_ptr, key_len).decode(errors="ignore")
     value = _read_bytes(caller, val_ptr, val_len).decode(errors="ignore")
+    _ensure_kv_quota_sync(db, ext_id, key, value, is_secret=False)
     schema = _load_kv_schema(ext_id)
     entry = _schema_for_key(schema, key)
     if schema and not entry:
@@ -350,6 +398,7 @@ def _secret_db_set(
 ) -> int:
     key = _read_bytes(caller, key_ptr, key_len).decode(errors="ignore")
     value = _read_bytes(caller, val_ptr, val_len).decode(errors="ignore")
+    _ensure_kv_quota_sync(db, ext_id, key, value, is_secret=True)
     _run(db.execute(_ensure_secret_kv_table(db, ext_id)))
     table = _secret_kv_table_name(db, ext_id)
     row = _run(

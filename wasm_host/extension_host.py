@@ -598,17 +598,19 @@ def _secret_kv_table_name(db: Database, ext_id: str) -> str:
     return table
 
 
-def _load_kv_schema(ext_id: str) -> dict:
+def _load_kv_schema(ext_id: str, upgrade_hash: str | None = None) -> dict:
     if ext_id in _kv_schema_cache:
         return _kv_schema_cache[ext_id]
     try:
-        conf_path = Path(
-            settings.lnbits_extensions_path, "extensions", ext_id, "config.json"
+        conf_path = (
+            Path(settings.lnbits_extensions_upgrade_path, f"{ext_id}-{upgrade_hash}", "config.json")
+            if upgrade_hash
+            else Path(settings.lnbits_extensions_path, "extensions", ext_id, "config.json")
         )
         if not conf_path.is_file():
             _kv_schema_cache[ext_id] = {}
             return _kv_schema_cache[ext_id]
-        with open(conf_path, "r+") as json_file:
+        with open(conf_path, "r") as json_file:
             config_json = json.load(json_file)
         schema = config_json.get("kv_schema", {})
         if not isinstance(schema, dict):
@@ -620,17 +622,38 @@ def _load_kv_schema(ext_id: str) -> dict:
         return _kv_schema_cache[ext_id]
 
 
-def _load_public_wasm_functions(ext_id: str) -> list[str]:
+def _load_public_wasm_functions(
+    ext_id: str, upgrade_hash: str | None = None
+) -> list[str]:
     try:
-        conf_path = Path(
-            settings.lnbits_extensions_path, "extensions", ext_id, "config.json"
+        conf_path = (
+            Path(settings.lnbits_extensions_upgrade_path, f"{ext_id}-{upgrade_hash}", "config.json")
+            if upgrade_hash
+            else Path(settings.lnbits_extensions_path, "extensions", ext_id, "config.json")
         )
         if not conf_path.is_file():
             return []
-        with open(conf_path, "r+") as json_file:
+        with open(conf_path, "r") as json_file:
             config_json = json.load(json_file)
         funcs = config_json.get("public_wasm_functions", [])
         return funcs if isinstance(funcs, list) else []
+    except Exception:
+        return []
+
+
+def _load_public_kv_keys(ext_id: str, upgrade_hash: str | None = None) -> list[str]:
+    try:
+        conf_path = (
+            Path(settings.lnbits_extensions_upgrade_path, f"{ext_id}-{upgrade_hash}", "config.json")
+            if upgrade_hash
+            else Path(settings.lnbits_extensions_path, "extensions", ext_id, "config.json")
+        )
+        if not conf_path.is_file():
+            return []
+        with open(conf_path, "r") as json_file:
+            config_json = json.load(json_file)
+        keys = config_json.get("public_kv_keys", [])
+        return keys if isinstance(keys, list) else []
     except Exception:
         return []
 
@@ -712,9 +735,52 @@ async def _kv_get(db: Database, ext_id: str, key: str) -> str | None:
     return row.get("value")
 
 
+async def _kv_total_bytes(db: Database, table: str) -> int:
+    row = await db.fetchone(
+        f"SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value)), 0) AS total FROM {table}",  # noqa: S608
+    )
+    if not row:
+        return 0
+    try:
+        return int(row.get("total") or 0)
+    except Exception:
+        return 0
+
+
+async def _ensure_kv_quota(
+    db: Database,
+    ext_id: str,
+    key: str,
+    new_value: str,
+    *,
+    is_secret: bool = False,
+) -> None:
+    limit = get_cached_wasm_settings().max_kv_bytes
+    if limit <= 0:
+        return
+
+    table = (
+        _secret_kv_table_name(db, ext_id)
+        if is_secret
+        else _kv_table_name(db, ext_id)
+    )
+    current_total = await _kv_total_bytes(db, table)
+    row = await db.fetchone(
+        f"SELECT value FROM {table} WHERE key = :key",  # noqa: S608
+        {"key": key},
+    )
+    old_value = row.get("value") if row else ""
+    old_size = len(str(key)) + len(str(old_value))
+    new_size = len(str(key)) + len(str(new_value))
+    projected = current_total - old_size + new_size
+    if projected > limit:
+        raise HTTPException(413, "WASM KV quota exceeded")
+
+
 async def _kv_set(db: Database, ext_id: str, key: str, value: str) -> None:
     await db.execute(_ensure_kv_table(db, ext_id))
     table = _kv_table_name(db, ext_id)
+    await _ensure_kv_quota(db, ext_id, key, value, is_secret=False)
     existing: dict[str, Any] | None = await db.fetchone(
         f"SELECT key FROM {table} WHERE key = :key",  # noqa: S608
         {"key": key},
@@ -783,6 +849,7 @@ async def _secret_kv_get(db: Database, ext_id: str, key: str) -> str | None:
 async def _secret_kv_set(db: Database, ext_id: str, key: str, value: str) -> None:
     await db.execute(_ensure_secret_kv_table(db, ext_id))
     table = _secret_kv_table_name(db, ext_id)
+    await _ensure_kv_quota(db, ext_id, key, value, is_secret=True)
     existing: dict[str, Any] | None = await db.fetchone(
         f"SELECT key FROM {table} WHERE key = :key",  # noqa: S608
         {"key": key},
@@ -850,7 +917,7 @@ def _register_pages_routes(router: APIRouter, ext_id: str) -> None:
 
 def _register_kv_routes(router: APIRouter, ext_id: str, db: Database, ext) -> None:
     _register_kv_read_routes(router, ext_id, db, ext)
-    _register_kv_write_routes(router, ext_id, db)
+    _register_kv_write_routes(router, ext_id, db, ext)
     _register_secret_routes(router, ext_id, db)
 
 
@@ -885,7 +952,7 @@ def _register_public_call_routes(
     @router.post("/api/v1/public/call/{handler}")
     async def api_public_wasm_call(handler: str, payload: dict):
         funcs = getattr(ext, "public_wasm_functions", None) or _load_public_wasm_functions(
-            ext_id
+            ext_id, getattr(ext, "upgrade_hash", None)
         )
         if handler not in funcs:
             raise HTTPException(404, "Handler not public")
@@ -944,6 +1011,71 @@ def _register_public_call_routes(
         return data
 
 
+def _register_call_routes(router: APIRouter, ext_id: str, db: Database, ext) -> None:
+    @router.post("/api/v1/call/{handler}")
+    async def api_wasm_call(
+        handler: str, payload: dict, user: User = Depends(check_user_exists)
+    ):
+        await _require_permission(user.id, ext_id, "ext.db.read_write")
+        _check_quota(
+            user.id, ext_id, "db", get_cached_wasm_settings().max_db_ops_per_min
+        )
+
+        request_id = int(time.time() * 1000) % 2147483647
+        raw = payload.get("raw")
+        value = raw if isinstance(raw, str) else json.dumps(payload)
+        await _kv_set(db, ext_id, f"request:{request_id}", value)
+        await _kv_set(db, ext_id, "request", value)
+        await _kv_set(db, ext_id, f"public_request:{request_id}", value)
+        await _kv_set(db, ext_id, "public_request", value)
+
+        try:
+            await wasm_call(ext_id, handler, [request_id], upgrade_hash=ext.upgrade_hash)
+        except WasmExecutionError as exc:
+            raise HTTPException(500, str(exc)) from exc
+
+        response = await _kv_get(db, ext_id, f"response:{request_id}")
+        if response is None:
+            response = await _kv_get(db, ext_id, "response")
+        if response is None:
+            response = await _kv_get(db, ext_id, f"public_response:{request_id}")
+        if response is None:
+            response = await _kv_get(db, ext_id, "public_response")
+        if response is None:
+            raise HTTPException(500, "No response")
+        try:
+            data = json.loads(response)
+        except Exception:
+            return {"raw": response}
+
+        watch = payload.get("watch") if isinstance(payload, dict) else None
+        if isinstance(watch, dict) and isinstance(data, dict):
+            payment_hash = data.get("payment_hash") or data.get("checking_id")
+            store_key = watch.get("store_key")
+            tag = watch.get("tag")
+            handler_name = watch.get("handler") or "noop"
+            list_updates = watch.get("list_updates")
+            if not isinstance(list_updates, list):
+                list_updates = []
+            if (
+                isinstance(payment_hash, str)
+                and isinstance(store_key, str)
+                and isinstance(handler_name, str)
+            ):
+                _start_payment_watch(
+                    ext_id,
+                    db,
+                    payment_hash,
+                    handler_name,
+                    tag if isinstance(tag, str) else None,
+                    store_key,
+                    list_updates,
+                    ext.upgrade_hash,
+                )
+
+        return data
+
+
 def _register_kv_read_routes(router: APIRouter, ext_id: str, db: Database, ext) -> None:
     @router.get("/api/v1/kv/{key}")
     async def api_kv_get(key: str, user: User = Depends(check_user_exists)):
@@ -956,7 +1088,9 @@ def _register_kv_read_routes(router: APIRouter, ext_id: str, db: Database, ext) 
 
     @router.get("/api/v1/public/kv/{key}")
     async def api_kv_get_public(key: str):
-        public_keys = ext.public_kv_keys or []
+        public_keys = getattr(ext, "public_kv_keys", None) or _load_public_kv_keys(
+            ext_id, getattr(ext, "upgrade_hash", None)
+        )
         if key not in public_keys:
             raise HTTPException(404, "Key not public")
         _check_quota(
@@ -966,7 +1100,9 @@ def _register_kv_read_routes(router: APIRouter, ext_id: str, db: Database, ext) 
         return {"key": key, "value": value}
 
 
-def _register_kv_write_routes(router: APIRouter, ext_id: str, db: Database) -> None:
+def _register_kv_write_routes(
+    router: APIRouter, ext_id: str, db: Database, ext
+) -> None:
     @router.post("/api/v1/kv/{key}")
     async def api_kv_set(
         key: str, payload: dict, user: User = Depends(check_user_exists)
@@ -978,7 +1114,7 @@ def _register_kv_write_routes(router: APIRouter, ext_id: str, db: Database) -> N
         value = payload.get("value")
         if value is None:
             raise HTTPException(400, "Missing value")
-        schema = _load_kv_schema(ext_id)
+        schema = _load_kv_schema(ext_id, getattr(ext, "upgrade_hash", None))
         entry = _schema_for_key(schema, key)
         if schema and not entry:
             raise HTTPException(400, "Key not allowed by schema")
@@ -1039,7 +1175,7 @@ def _register_watch_routes(router: APIRouter, ext_id: str, db: Database, ext) ->
             raise HTTPException(403, "Wallet not found or not owned by user")
 
         funcs = getattr(ext, "public_wasm_functions", None) or _load_public_wasm_functions(
-            ext_id
+            ext_id, getattr(ext, "upgrade_hash", None)
         )
         if handler not in funcs:
             raise HTTPException(400, "Handler not allowed")
@@ -1115,7 +1251,7 @@ def _register_watch_routes(router: APIRouter, ext_id: str, db: Database, ext) ->
         await _require_permission(user.id, ext_id, "ext.db.read_write")
 
         funcs = getattr(ext, "public_wasm_functions", None) or _load_public_wasm_functions(
-            ext_id
+            ext_id, getattr(ext, "upgrade_hash", None)
         )
         if handler not in funcs:
             raise HTTPException(400, "Handler not allowed")
@@ -1169,7 +1305,9 @@ def _register_watch_routes(router: APIRouter, ext_id: str, db: Database, ext) ->
         if not sql:
             raise HTTPException(400, "Missing sql")
         await _require_permission(user.id, ext_id, "ext.db.sql")
-        _check_quota(user.id, ext_id, "db", settings.lnbits_wasm_max_db_ops_per_min)
+        _check_quota(
+            user.id, ext_id, "db", get_cached_wasm_settings().max_db_ops_per_min
+        )
         _validate_sql(ext_id, sql, read_only=False)
         await db.execute(sql, params)  # noqa: S608
         return {"ok": True}
@@ -1322,6 +1460,7 @@ def register_wasm_ext_routes(app, ext) -> None:
     _register_pages_routes(router, ext_id)
     _register_kv_routes(router, ext_id, db, ext)
     _register_public_call_routes(router, ext_id, db, ext)
+    _register_call_routes(router, ext_id, db, ext)
     _register_watch_routes(router, ext_id, db, ext)
     _register_proxy_routes(router, app, ext_id, proxy_block)
     _mount_static(app, ext_id, ext.upgrade_hash)
