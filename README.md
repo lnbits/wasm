@@ -13,12 +13,23 @@
 <img src="./static/image/wasm.png" alt="WASM Host" width="220">
 
 **A safer, permissioned runtime for WASM extensions.**
-Needed to run wasm extensions, a safe why to run vibe-coded and unvetted extensions without comprimising your system.
+Needed to run permission based wasm extensions, a safe why to run vibe-coded and unvetted extensions without comprimising your system.
 
 ---
 
-## Features
+## Why can you run an unvetted WASM extension?
 
+WASM extensions have:
+- No filesystem access (can’t read/write host files).
+- No OS command execution or process spawning.
+- No Python execution or core code patching.
+- No long‑running processes (per‑call, time‑boxed runtime).
+- No access to core DB tables (only its own KV/secret KV).
+- No network access beyond explicitly permitted internal API routes.
+- No cross‑schema SQL or privileged data unless granted.
+- No unbounded storage/memory (module size, timeouts, DB op limits, KV quota).
+
+## Features
 - Per-extension KV and secret storage
 - Public handlers and public KV reads
 - Payment watchers (by tag) and scheduled tasks
