@@ -58,6 +58,7 @@ class ScheduleTask:
 
 _scheduled_tasks: dict[str, list[ScheduleTask]] = {}
 _SCHEDULE_KV_KEY = "scheduled_tasks"
+_http_permission_policy_cache: dict[str, dict[tuple[str, str], dict]] = {}
 
 
 def _register_tag_watch(watch: TagWatch) -> None:
@@ -102,6 +103,69 @@ def _register_schedule(task: ScheduleTask) -> None:
             return
     existing.append(task)
     _scheduled_tasks[task.ext_id] = existing
+
+
+def _load_http_permission_policies(ext_id: str) -> dict[tuple[str, str], dict]:
+    if ext_id in _http_permission_policy_cache:
+        return _http_permission_policy_cache[ext_id]
+    try:
+        conf_path = Path(
+            settings.lnbits_extensions_path, "extensions", ext_id, "config.json"
+        )
+        if not conf_path.is_file():
+            _http_permission_policy_cache[ext_id] = {}
+            return _http_permission_policy_cache[ext_id]
+        with open(conf_path, "r") as json_file:
+            config_json = json.load(json_file)
+        permissions = config_json.get("permissions", [])
+        policies: dict[tuple[str, str], dict] = {}
+        if isinstance(permissions, list):
+            for perm in permissions:
+                if not isinstance(perm, dict):
+                    continue
+                perm_id = perm.get("id")
+                if not isinstance(perm_id, str):
+                    continue
+                if not perm_id.startswith("api."):
+                    continue
+                policy = perm.get("policy")
+                if not isinstance(policy, dict) or not policy:
+                    continue
+                try:
+                    method_part, path = perm_id.split(":", 1)
+                    method = method_part.replace("api.", "").upper()
+                except ValueError:
+                    continue
+                if not path.startswith("/"):
+                    continue
+                policies[(method, path)] = policy
+        _http_permission_policy_cache[ext_id] = policies
+        return policies
+    except Exception:
+        _http_permission_policy_cache[ext_id] = {}
+        return _http_permission_policy_cache[ext_id]
+
+
+def _enforce_payments_policy_proxy(
+    ext_id: str, method: str, path: str, body: Any
+) -> None:
+    if method != "POST" or path != "/api/v1/payments":
+        return
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Payments body must be a JSON object")
+    if "out" not in body:
+        raise HTTPException(400, "Payments request must set 'out' explicitly")
+    out_value = body.get("out")
+    if not isinstance(out_value, bool):
+        raise HTTPException(400, "Payments request 'out' must be a boolean")
+
+    policies = _load_http_permission_policies(ext_id)
+    policy = policies.get((method, path))
+    if not policy:
+        return
+    expected = policy.get("payments_out")
+    if isinstance(expected, bool) and out_value is not expected:
+        raise HTTPException(403, "Payments request violates permission policy")
 
 
 async def _persist_schedule(ext_id: str, task: ScheduleTask) -> None:
@@ -1429,6 +1493,7 @@ def _register_proxy_routes(
 
         query = payload.get("query") or {}
         body = payload.get("body")
+        _enforce_payments_policy_proxy(ext_id, method, path, body)
 
         async with httpx.AsyncClient(app=app, base_url="http://lnbits") as client:
             resp = await client.request(

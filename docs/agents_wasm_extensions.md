@@ -100,6 +100,26 @@ Your extension can only call or access what is declared and granted:
 
 If the endpoint doesn’t exist, permissions won’t save.
 
+**Payments rule (read this if you touch `/api/v1/payments`)**
+
+For `POST /api/v1/payments`, the WASM bridge enforces:
+
+- You **must** include `"out": true|false` explicitly in the request body.
+- You **must** declare a policy in `config.json`, and the bridge **enforces it**.
+
+Use this in your permission to make intent explicit and safe:
+
+```json
+{
+  "id": "api.POST:/api/v1/payments",
+  "label": "Create invoices",
+  "description": "Create invoices only.",
+  "policy": {"payments_out": false}
+}
+```
+
+If you need to **pay** invoices, set `"policy": {"payments_out": true}` and send `"out": true` in your request body.
+
 ## Tag Watchers (Backend)
 
 You can register tag watchers:

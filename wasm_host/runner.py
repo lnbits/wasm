@@ -26,6 +26,7 @@ from lnbits.extensions.wasm.services import get_cached_wasm_settings
 
 _kv_schema_cache: dict[str, dict] = {}
 _http_permissions_cache: dict[str, set[tuple[str, str]]] = {}
+_http_permission_policy_cache: dict[str, dict[tuple[str, str], dict]] = {}
 
 
 def _load_kv_schema(ext_id: str) -> dict:
@@ -91,6 +92,71 @@ def _load_http_permissions(ext_id: str) -> set[tuple[str, str]]:
     except Exception:
         _http_permissions_cache[ext_id] = set()
         return _http_permissions_cache[ext_id]
+
+
+def _load_http_permission_policies(ext_id: str) -> dict[tuple[str, str], dict]:
+    if ext_id in _http_permission_policy_cache:
+        return _http_permission_policy_cache[ext_id]
+    try:
+        conf_path = Path(
+            settings.lnbits_extensions_path, "extensions", ext_id, "config.json"
+        )
+        if not conf_path.is_file():
+            _http_permission_policy_cache[ext_id] = {}
+            return _http_permission_policy_cache[ext_id]
+        with open(conf_path, "r") as json_file:
+            config_json = json.load(json_file)
+        permissions = config_json.get("permissions", [])
+        policies: dict[tuple[str, str], dict] = {}
+        if isinstance(permissions, list):
+            for perm in permissions:
+                if not isinstance(perm, dict):
+                    continue
+                perm_id = perm.get("id")
+                if not isinstance(perm_id, str):
+                    continue
+                if not perm_id.startswith("api."):
+                    continue
+                policy = perm.get("policy")
+                if not isinstance(policy, dict) or not policy:
+                    continue
+                try:
+                    method_part, path = perm_id.split(":", 1)
+                    method = method_part.replace("api.", "").upper()
+                except ValueError:
+                    continue
+                if not path.startswith("/"):
+                    continue
+                policies[(method, path)] = policy
+        _http_permission_policy_cache[ext_id] = policies
+        return policies
+    except Exception:
+        _http_permission_policy_cache[ext_id] = {}
+        return _http_permission_policy_cache[ext_id]
+
+
+def _enforce_payments_policy(ext_id: str, method: str, path: str, body: bytes) -> None:
+    if method != "POST" or path != "/api/v1/payments":
+        return
+    try:
+        payload = json.loads(body or b"{}")
+    except Exception as exc:
+        raise RuntimeError("Invalid JSON body") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Invalid payments payload")
+    if "out" not in payload:
+        raise RuntimeError("Payments request must set 'out' explicitly")
+    out_value = payload.get("out")
+    if not isinstance(out_value, bool):
+        raise RuntimeError("Payments request 'out' must be a boolean")
+
+    policies = _load_http_permission_policies(ext_id)
+    policy = policies.get((method, path))
+    if not policy:
+        return
+    expected = policy.get("payments_out")
+    if isinstance(expected, bool) and out_value is not expected:
+        raise RuntimeError("Payments request 'out' does not match permission policy")
 
 
 def _coerce_schema_value(schema_entry: dict, value: str):
@@ -271,6 +337,7 @@ def _http_request(
     allowed = _load_http_permissions(ext_id)
     if (method, path) not in allowed:
         raise RuntimeError("HTTP permission denied")
+    _enforce_payments_policy(ext_id, method, path, body)
 
     base_url = settings.lnbits_baseurl.rstrip("/")
     headers = {"accept": "application/json"}

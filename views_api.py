@@ -110,6 +110,28 @@ def _ensure_api_permissions_available(request: Request, permissions: list[str]) 
         )
 
 
+def _ensure_payments_policy_required(permissions: list[dict]) -> None:
+    if not isinstance(permissions, list):
+        return
+    for perm in permissions:
+        if not isinstance(perm, dict):
+            continue
+        perm_id = perm.get("id")
+        if perm_id != "api.POST:/api/v1/payments":
+            continue
+        policy = perm.get("policy")
+        if not isinstance(policy, dict):
+            raise HTTPException(
+                HTTPStatus.BAD_REQUEST,
+                "Permissions for /api/v1/payments must declare a policy.",
+            )
+        if policy.get("payments_out") not in (True, False):
+            raise HTTPException(
+                HTTPStatus.BAD_REQUEST,
+                "Payments policy must set 'payments_out' to true or false.",
+            )
+
+
 @wasm_api_router.get("/api/v1/settings", dependencies=[Depends(check_admin)])
 async def api_get_settings():
     settings_obj = await get_settings()
@@ -185,6 +207,7 @@ async def api_update_extension_permissions(
         granted_tags = []
 
     _ensure_api_permissions_available(request, required_permissions)
+    _ensure_payments_policy_required(permissions_source)
     _ensure_payment_tags_allowed(config.get("payment_tags", []), granted_tags)
 
     if required_permissions:
