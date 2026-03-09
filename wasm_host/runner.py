@@ -145,7 +145,10 @@ def _enforce_payments_policy(ext_id: str, method: str, path: str, body: bytes) -
     if not isinstance(payload, dict):
         raise RuntimeError("Invalid payments payload")
     if "out" not in payload:
-        raise RuntimeError("Payments request must set 'out' explicitly")
+        raise RuntimeError(
+            "Payments request must set boolean 'out' explicitly; declare "
+            "policy.payments_out in config.json."
+        )
     out_value = payload.get("out")
     if not isinstance(out_value, bool):
         raise RuntimeError("Payments request 'out' must be a boolean")
@@ -156,7 +159,9 @@ def _enforce_payments_policy(ext_id: str, method: str, path: str, body: bytes) -
         return
     expected = policy.get("payments_out")
     if isinstance(expected, bool) and out_value is not expected:
-        raise RuntimeError("Payments request 'out' does not match permission policy")
+        raise RuntimeError(
+            f"Payments request violates policy.payments_out (expected {expected})."
+        )
 
 
 def _coerce_schema_value(schema_entry: dict, value: str):

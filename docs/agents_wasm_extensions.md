@@ -100,6 +100,10 @@ Your extension can only call or access what is declared and granted:
 
 If the endpoint doesn’t exist, permissions won’t save.
 
+**API reference**
+
+Use your LNbits instance OpenAPI spec at `<lnbits server>/openapi.json` to discover available endpoints and request/response shapes.
+
 **Payments rule (read this if you touch `/api/v1/payments`)**
 
 For `POST /api/v1/payments`, the WASM bridge enforces:
@@ -119,6 +123,41 @@ Use this in your permission to make intent explicit and safe:
 ```
 
 If you need to **pay** invoices, set `"policy": {"payments_out": true}` and send `"out": true` in your request body.
+
+**Paying invoices (explicit example)**
+
+```json
+{
+  "id": "api.POST:/api/v1/payments",
+  "label": "Pay invoices",
+  "description": "Pay invoices only.",
+  "policy": {"payments_out": true}
+}
+```
+
+Request body must include:
+
+```json
+{"out": true, "bolt11": "..."}
+```
+
+## AI Prompt (Copy-Paste)
+
+Use this when asking an agent to build a WASM extension:
+
+```
+You are building a LNbits WASM extension. First read:
+extensions/wasm/docs/agents_wasm_extensions.md
+
+Rules:
+- Only edit files under lnbits/extensions/<ext_id>/.
+- Use extensions/paidtasks as a base template.
+- Any internal endpoint access must be declared in config.json permissions.
+- For POST /api/v1/payments you must set "out" explicitly and declare policy.payments_out.
+- Use <lnbits server>/openapi.json as the API reference.
+
+Goal: <describe extension behavior>.
+```
 
 ## Tag Watchers (Backend)
 

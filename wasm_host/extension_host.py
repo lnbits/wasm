@@ -152,9 +152,17 @@ def _enforce_payments_policy_proxy(
     if method != "POST" or path != "/api/v1/payments":
         return
     if not isinstance(body, dict):
-        raise HTTPException(400, "Payments body must be a JSON object")
+        raise HTTPException(
+            400,
+            "Payments body must be a JSON object; include 'out' and declare "
+            "policy.payments_out in config.json.",
+        )
     if "out" not in body:
-        raise HTTPException(400, "Payments request must set 'out' explicitly")
+        raise HTTPException(
+            400,
+            "Payments request must set boolean 'out' explicitly; declare "
+            "policy.payments_out in config.json.",
+        )
     out_value = body.get("out")
     if not isinstance(out_value, bool):
         raise HTTPException(400, "Payments request 'out' must be a boolean")
@@ -165,7 +173,9 @@ def _enforce_payments_policy_proxy(
         return
     expected = policy.get("payments_out")
     if isinstance(expected, bool) and out_value is not expected:
-        raise HTTPException(403, "Payments request violates permission policy")
+        raise HTTPException(
+            403, f"Payments request violates policy.payments_out (expected {expected})."
+        )
 
 
 async def _persist_schedule(ext_id: str, task: ScheduleTask) -> None:

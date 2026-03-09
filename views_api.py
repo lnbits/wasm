@@ -123,7 +123,8 @@ def _ensure_payments_policy_required(permissions: list[dict]) -> None:
         if not isinstance(policy, dict):
             raise HTTPException(
                 HTTPStatus.BAD_REQUEST,
-                "Permissions for /api/v1/payments must declare a policy.",
+                "Permissions for /api/v1/payments must declare "
+                "policy.payments_out (true or false).",
             )
         if policy.get("payments_out") not in (True, False):
             raise HTTPException(
