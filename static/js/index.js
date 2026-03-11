@@ -4,7 +4,7 @@ window.app = Vue.createApp({
   data() {
     return {
       form: {
-        timeout_seconds: 3.0,
+        timeout_seconds: 20.0,
         max_module_bytes: 1000000,
         max_db_ops_per_min: 120,
         max_kv_bytes: 10000000

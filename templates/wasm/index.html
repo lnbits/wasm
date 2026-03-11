@@ -4,28 +4,29 @@
 <div class="row q-col-gutter-md">
   <div class="col-12 col-md-6">
     <q-card>
-      <q-card-section>
-        <div class="row items-center q-gutter-sm">
-          <q-img
-            src="{{ static_url_for('wasm/static', path='image/wasm.png') }}"
-            alt="WASM Host"
-            style="width: 28px; height: 28px"
-          />
-          <div class="text-h5">WASM Host Settings</div>
-        </div>
-        <div class="text-caption text-grey">
-          Applies to all WASM child extensions.
-        </div>
-      </q-card-section>
       <q-card-section class="q-pt-none">
-        <q-banner rounded class="bg-grey-9 text-grey-4">
-          <div class="text-subtitle2">About</div>
-          <div class="text-caption">
-            This host lets you run vibe-coded, not-yet-vetted WASM extensions more
-            safely. Each WASM extension must request permissions before it can
-            access data or APIs.
+        <div class="row q-col-gutter-lg items-start">
+          <div class="col-12 col-md-3">
+            <q-img
+              src="{{ static_url_for('wasm/static', path='image/wasm.png') }}"
+              alt="WASM Host"
+            />
           </div>
-        </q-banner>
+          <div class="col-12 col-md-9">
+            <div class="text-h5 q-mb-xs">WASM Host Settings</div>
+            <div class="text-caption text-grey q-mb-sm">
+              Applies to all WASM child extensions.
+            </div>
+            <q-banner rounded class="bg-grey-9 text-grey-4">
+              <div class="text-subtitle2">About</div>
+              <div class="text-caption">
+                This host lets you run vibe-coded, not-yet-vetted WASM extensions
+                more safely. Each WASM extension must request permissions before
+                it can access data or APIs.
+              </div>
+            </q-banner>
+          </div>
+        </div>
       </q-card-section>
       <q-card-section>
         <q-input
