@@ -13,7 +13,7 @@
 <img src="./static/image/wasm.png" alt="WASM Host" width="220">
 
 **A safer, permissioned runtime for WASM extensions.**
-Needed to run permission based wasm extensions, a safe why to run vibe-coded and unvetted extensions without comprimising your system.
+Needed to run permission based wasm extensions, a safe way to run unvetted extensions. an example wasm based extensin can be found <a href="https:/github.com/lnbits/paidtasks">here</a>.
 
 ---
 
