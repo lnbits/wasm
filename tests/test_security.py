@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from lnbits.core.models.payments import Payment, PaymentState
 from lnbits.extensions.wasm.views_api import (
     _ensure_payment_tags_allowed,
+    _ensure_permissions_declared,
     _ensure_payments_policy_required,
     _parse_api_permission,
 )
@@ -39,6 +40,16 @@ def test_payment_tag_grants_are_strictly_declared():
     assert exc.value.status_code == HTTPStatus.BAD_REQUEST
 
     _ensure_payment_tags_allowed(["paidtasks"], ["paidtasks"])
+
+
+def test_permission_grants_must_be_declared_by_extension():
+    declared = ["ext.db.read_write", "api.POST:/api/v1/payments"]
+
+    with pytest.raises(HTTPException) as exc:
+        _ensure_permissions_declared(declared, ["api.GET:/api/v1/wallet"])
+    assert exc.value.status_code == HTTPStatus.BAD_REQUEST
+
+    _ensure_permissions_declared(declared, declared)
 
 
 def test_payments_api_permission_requires_explicit_direction_policy():

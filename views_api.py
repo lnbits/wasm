@@ -54,6 +54,15 @@ def _ensure_payment_tags_allowed(required: list[str], granted: list[str]) -> Non
         )
 
 
+def _ensure_permissions_declared(required: list[str], granted: list[str]) -> None:
+    undeclared = [p for p in granted if p not in required]
+    if undeclared:
+        raise HTTPException(
+            HTTPStatus.BAD_REQUEST,
+            f"Permissions are not declared by this extension: {', '.join(undeclared)}",
+        )
+
+
 def _parse_api_permission(perm: str) -> tuple[str, str] | None:
     if not perm.startswith("api."):
         return None
@@ -209,6 +218,7 @@ async def api_update_extension_permissions(
 
     _ensure_api_permissions_available(request, required_permissions)
     _ensure_payments_policy_required(permissions_source)
+    _ensure_permissions_declared(required_permissions, granted_permissions)
     _ensure_payment_tags_allowed(config.get("payment_tags", []), granted_tags)
 
     if required_permissions:

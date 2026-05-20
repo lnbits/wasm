@@ -13,7 +13,7 @@
 <img src="./static/image/wasm.png" alt="WASM Host" width="220">
 
 **A safer, permissioned runtime for WASM extensions.**
-Needed to run permission based wasm extensions, a safe way to run unvetted extensions. An example wasm based extensin can be found <a href="https:/github.com/lnbits/paidtasks">here</a>.
+Needed to run permission based wasm extensions, a safe way to run unvetted extensions. An example wasm based extension can be found <a href="https://github.com/lnbits/paidtasks">here</a>.
 
 ---
 
@@ -42,6 +42,8 @@ WASM extensions have:
 2. Install a WASM extension under `lnbits/extensions/<ext_id>/`.
 3. Drop your module in `lnbits/extensions/<ext_id>/wasm/module.wasm` (or `.wat`).
 4. Define permissions and public handlers in `config.json`.
+
+For `POST /api/v1/payments`, declare `policy.payments_out` in `config.json` and include `"out": true` or `"out": false` in every payment request body. Invoice/payment side effects should be encoded by the WASM module, for example in the invoice `extra` metadata, rather than trusted from public browser payloads.
 
 ## Settings
 

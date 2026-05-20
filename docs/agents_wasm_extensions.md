@@ -54,7 +54,8 @@ Example:
     {
       "id": "api.POST:/api/v1/payments",
       "label": "Create invoices",
-      "description": "..."
+      "description": "...",
+      "policy": {"payments_out": false}
     },
     {
       "id": "ext.payments.watch",
@@ -236,7 +237,7 @@ Behavior:
 - Stores payload in `request` / `request:{id}` (and mirrors to `public_request` keys).
 - Executes the handler with the request id.
 - Returns the handler response from `response` / `public_response`.
-- Supports `watch` + `list_updates` the same way public calls do.
+- Supports `watch` for invoice settlement callbacks.
 
 ## Quick Start (Minimal Extension)
 
@@ -247,29 +248,44 @@ Behavior:
 
 ## Canonical Paid Flow (Create → Watch → Update Record → WS)
 
-Backend or public page calls a handler that creates an invoice:
+Public page calls a public handler that creates an invoice:
 
 ```
-POST /{ext_id}/api/v1/call/public_create_invoice
+POST /{ext_id}/api/v1/public/call/public_create_invoice
 {
   "raw": "<task_id>",
   "watch": {
     "store_key": "task_event:last_payment",
     "tag": "myext",
-    "handler": "noop",
-    "list_updates": [
-      {"key": "tasks", "id": "<task_id>", "field": "paid", "value": true},
-      {"key": "public_tasks", "id": "<task_id>", "field": "paid", "value": true}
-    ]
+    "handler": "noop"
   }
 }
 ```
 
+Authenticated extension pages can use `/{ext_id}/api/v1/call/{handler}` for user-gated handlers.
+
 What happens:
 
 1. The handler creates an invoice via `http_request` to `/api/v1/payments`.
+   If settlement should update extension state, the handler puts that intent in trusted invoice metadata, for example:
+
+```json
+{
+  "extra": {
+    "tag": "myext",
+    "wasm_list_update": {
+      "key": "tasks",
+      "public_key": "public_tasks",
+      "id": "<task_id>",
+      "field": "paid",
+      "value": true
+    }
+  }
+}
+```
+
 2. The host registers a payment watch and stores the invoice response.
-3. When paid, the host updates the task record and emits websocket updates.
+3. When paid, the host applies the trusted `extra.wasm_list_update` metadata and emits websocket updates.
 
 ## Recommended Data Model
 
