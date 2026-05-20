@@ -22,12 +22,19 @@ def resolve_module_path(ext_id: str, upgrade_hash: str | None = None) -> Path:
         ext_dir = Path(settings.lnbits_extensions_path, "extensions", ext_id)
     wasm_dir = ext_dir / "wasm"
     wasm_path = wasm_dir / "module.wasm"
+    wat_path = wasm_dir / "module.wat"
+    if wat_path.exists() and (
+        not wasm_path.exists() or wat_path.stat().st_mtime > wasm_path.stat().st_mtime
+    ):
+        max_bytes = get_cached_wasm_settings().max_module_bytes
+        if max_bytes > 0 and wat_path.stat().st_size > max_bytes:
+            raise WasmExecutionError("WASM module exceeds size limit.")
+        return wat_path
     if wasm_path.exists():
         max_bytes = get_cached_wasm_settings().max_module_bytes
         if max_bytes > 0 and wasm_path.stat().st_size > max_bytes:
             raise WasmExecutionError("WASM module exceeds size limit.")
         return wasm_path
-    wat_path = wasm_dir / "module.wat"
     if wat_path.exists():
         max_bytes = get_cached_wasm_settings().max_module_bytes
         if max_bytes > 0 and wat_path.stat().st_size > max_bytes:

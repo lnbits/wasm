@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import secrets
 import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -59,6 +60,19 @@ class ScheduleTask:
 _scheduled_tasks: dict[str, list[ScheduleTask]] = {}
 _SCHEDULE_KV_KEY = "scheduled_tasks"
 _http_permission_policy_cache: dict[str, dict[tuple[str, str], dict]] = {}
+_public_call_locks: dict[str, asyncio.Lock] = {}
+
+
+def _new_request_id() -> int:
+    return secrets.randbelow(2_147_483_646) + 1
+
+
+def _public_call_lock(ext_id: str) -> asyncio.Lock:
+    lock = _public_call_locks.get(ext_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _public_call_locks[ext_id] = lock
+    return lock
 
 
 def _register_tag_watch(watch: TagWatch) -> None:
@@ -908,6 +922,45 @@ async def _apply_list_updates(
             await websocket_updater(f"{ext_id}:{key}", updated)
 
 
+async def _apply_payment_extra_updates(
+    db: Database, ext_id: str, payment: Payment, store_key: str | None = None
+) -> None:
+    extra = payment.extra or {}
+    update = extra.get("wasm_list_update")
+    if not isinstance(update, dict) and ext_id == "paidtasks" and store_key:
+        task_id = store_key.removeprefix("task_paid:")
+        if task_id != store_key:
+            cost = await _kv_get(db, ext_id, f"task_cost:{task_id}")
+            try:
+                cost_sat = int(cost or "0")
+            except ValueError:
+                cost_sat = 0
+            if cost_sat > 0 and payment.sat >= cost_sat:
+                update = {
+                    "key": "tasks",
+                    "public_key": "public_tasks",
+                    "id": task_id,
+                    "field": "paid",
+                    "value": True,
+                }
+    if not isinstance(update, dict):
+        return
+
+    updates = []
+    base = {
+        "id": update.get("id"),
+        "field": update.get("field"),
+        "value": update.get("value"),
+    }
+    private_key = update.get("key")
+    if isinstance(private_key, str):
+        updates.append({**base, "key": private_key})
+    public_key = update.get("public_key")
+    if isinstance(public_key, str):
+        updates.append({**base, "key": public_key})
+    await _apply_list_updates(db, ext_id, updates)
+
+
 async def _secret_kv_get(db: Database, ext_id: str, key: str) -> str | None:
     await db.execute(_ensure_secret_kv_table(db, ext_id))
     table = _secret_kv_table_name(db, ext_id)
@@ -1034,55 +1087,52 @@ def _register_public_call_routes(
             "public", ext_id, "db", get_cached_wasm_settings().max_db_ops_per_min
         )
 
-        request_id = int(time.time() * 1000) % 2147483647
-        raw = payload.get("raw")
-        value = raw if isinstance(raw, str) else json.dumps(payload)
-        await _kv_set(db, ext_id, f"public_request:{request_id}", value)
-        await _kv_set(db, ext_id, "public_request", value)
+        async with _public_call_lock(ext_id):
+            request_id = _new_request_id()
+            raw = payload.get("raw")
+            value = raw if isinstance(raw, str) else json.dumps(payload)
+            await _kv_set(db, ext_id, f"public_request:{request_id}", value)
+            await _kv_set(db, ext_id, "public_request", value)
 
-        try:
-            await wasm_call(
-                ext_id, handler, [request_id], upgrade_hash=ext.upgrade_hash
-            )
-        except WasmExecutionError as exc:
-            raise HTTPException(500, str(exc)) from exc
-
-        response = await _kv_get(db, ext_id, f"public_response:{request_id}")
-        if response is None:
-            response = await _kv_get(db, ext_id, "public_response")
-        if response is None:
-            raise HTTPException(500, "No response")
-        try:
-            data = json.loads(response)
-        except Exception:
-            return {"raw": response}
-
-        watch = payload.get("watch") if isinstance(payload, dict) else None
-        if isinstance(watch, dict) and isinstance(data, dict):
-            payment_hash = data.get("payment_hash") or data.get("checking_id")
-            store_key = watch.get("store_key")
-            tag = watch.get("tag")
-            handler_name = watch.get("handler") or "noop"
-            list_updates = watch.get("list_updates")
-            if not isinstance(list_updates, list):
-                list_updates = []
-            if (
-                isinstance(payment_hash, str)
-                and isinstance(store_key, str)
-                and handler_name in funcs
-            ):
-                _start_payment_watch(
-                    ext_id,
-                    db,
-                    payment_hash,
-                    handler_name,
-                    tag if isinstance(tag, str) else None,
-                    store_key,
-                    list_updates,
-                    ext.upgrade_hash,
+            try:
+                await wasm_call(
+                    ext_id, handler, [request_id], upgrade_hash=ext.upgrade_hash
                 )
+            except WasmExecutionError as exc:
+                raise HTTPException(500, str(exc)) from exc
 
-        return data
+            response = await _kv_get(db, ext_id, f"public_response:{request_id}")
+            if response is None:
+                response = await _kv_get(db, ext_id, "public_response")
+            if response is None:
+                raise HTTPException(500, "No response")
+            try:
+                data = json.loads(response)
+            except Exception:
+                return {"raw": response}
+
+            watch = payload.get("watch") if isinstance(payload, dict) else None
+            if isinstance(watch, dict) and isinstance(data, dict):
+                payment_hash = data.get("payment_hash") or data.get("checking_id")
+                store_key = watch.get("store_key")
+                tag = watch.get("tag")
+                handler_name = watch.get("handler") or "noop"
+                if (
+                    isinstance(payment_hash, str)
+                    and isinstance(store_key, str)
+                    and handler_name in funcs
+                ):
+                    _start_payment_watch(
+                        ext_id,
+                        db,
+                        payment_hash,
+                        handler_name,
+                        tag if isinstance(tag, str) else None,
+                        store_key,
+                        ext.upgrade_hash,
+                    )
+
+            return data
 
 
 def _register_call_routes(router: APIRouter, ext_id: str, db: Database, ext) -> None:
@@ -1095,7 +1145,7 @@ def _register_call_routes(router: APIRouter, ext_id: str, db: Database, ext) -> 
             user.id, ext_id, "db", get_cached_wasm_settings().max_db_ops_per_min
         )
 
-        request_id = int(time.time() * 1000) % 2147483647
+        request_id = _new_request_id()
         raw = payload.get("raw")
         value = raw if isinstance(raw, str) else json.dumps(payload)
         await _kv_set(db, ext_id, f"request:{request_id}", value)
@@ -1128,9 +1178,6 @@ def _register_call_routes(router: APIRouter, ext_id: str, db: Database, ext) -> 
             store_key = watch.get("store_key")
             tag = watch.get("tag")
             handler_name = watch.get("handler") or "noop"
-            list_updates = watch.get("list_updates")
-            if not isinstance(list_updates, list):
-                list_updates = []
             if (
                 isinstance(payment_hash, str)
                 and isinstance(store_key, str)
@@ -1143,7 +1190,6 @@ def _register_call_routes(router: APIRouter, ext_id: str, db: Database, ext) -> 
                     handler_name,
                     tag if isinstance(tag, str) else None,
                     store_key,
-                    list_updates,
                     ext.upgrade_hash,
                 )
 
@@ -1210,9 +1256,6 @@ def _register_watch_routes(router: APIRouter, ext_id: str, db: Database, ext) ->
         handler = payload.get("handler") or "on_payment"
         tag = payload.get("tag")
         store_key = payload.get("store_key") or "last_payment"
-        list_updates = payload.get("list_updates")
-        if not isinstance(list_updates, list):
-            list_updates = []
         if not payment_hash:
             raise HTTPException(400, "Missing payment_hash")
         await _require_permission(user.id, ext_id, "ext.payments.watch")
@@ -1226,7 +1269,6 @@ def _register_watch_routes(router: APIRouter, ext_id: str, db: Database, ext) ->
             handler,
             tag,
             store_key,
-            list_updates,
             ext.upgrade_hash,
         )
         return {"ok": True, "task_id": id(task)}
@@ -1394,7 +1436,6 @@ def _start_payment_watch(
     handler: str,
     tag: str | None,
     store_key: str,
-    list_updates: list[dict[str, Any]],
     upgrade_hash: str | None,
 ) -> asyncio.Task:
     queue_name = f"wasm:{ext_id}:{payment_hash}:{time.time()}"
@@ -1425,8 +1466,7 @@ def _start_payment_watch(
                 await _kv_set(db, ext_id, "watch_request", json.dumps(watch_payload))
                 watch_value = store_key.rsplit(":", 1)[-1]
                 await _kv_set(db, ext_id, "public_request", watch_value)
-                if list_updates:
-                    await _apply_list_updates(db, ext_id, list_updates)
+                await _apply_payment_extra_updates(db, ext_id, existing, store_key)
                 await wasm_call(
                     ext_id,
                     handler,
@@ -1461,8 +1501,7 @@ def _start_payment_watch(
                     await _kv_set(db, ext_id, "watch_request", json.dumps(watch_payload))
                     watch_value = store_key.rsplit(":", 1)[-1]
                     await _kv_set(db, ext_id, "public_request", watch_value)
-                    if list_updates:
-                        await _apply_list_updates(db, ext_id, list_updates)
+                    await _apply_payment_extra_updates(db, ext_id, payment, store_key)
                     await wasm_call(
                         ext_id,
                         handler,

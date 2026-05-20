@@ -680,7 +680,8 @@ def main() -> int:
         else:
             result = func(store, *int_args)  # type: ignore[operator]
     except Exception as exc:
-        payload = {"ok": False, "error": f"{exc}\n{traceback.format_exc()}"}
+        sys.stderr.write(traceback.format_exc())
+        payload = {"ok": False, "error": str(exc) or "WASM execution failed"}
         sys.stdout.write(json.dumps(payload))
         return 1
 
