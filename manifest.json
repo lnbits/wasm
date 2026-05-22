@@ -1,11 +1,9 @@
-[
-  {
-    "id": "wasm",
-    "name": "WASM!",
-    "short_description": "WASM host and sandbox for child extensions",
-    "tile": "/wasm/static/image/wasm.png",
-    "min_lnbits_version": "1.1.0",
-    "version": "0.0.1",
-    "license": "MIT"
-  }
-]
+{
+  "id": "wasm",
+  "name": "WASM!",
+  "short_description": "WASM host and sandbox for child extensions",
+  "tile": "/wasm/static/image/wasm.png",
+  "min_lnbits_version": "1.1.0",
+  "version": "0.0.1",
+  "license": "MIT"
+}
